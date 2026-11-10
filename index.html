@@ -1,0 +1,173 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CARROM MASTER AI</title>
+<style>
+*{box-sizing:border-box}
+body{
+  margin:0;
+  font-family:Arial,sans-serif;
+  background:#101522;
+  color:white;
+}
+header{
+  text-align:center;
+  padding:25px 15px;
+  background:#19243a;
+  border-bottom:2px solid #e9ae35;
+}
+header h1{color:#ffc64b;margin:0;font-size:27px}
+header p{color:#b8c5d9}
+.container{max-width:650px;margin:auto;padding:18px}
+.card{
+  background:#1b263b;
+  padding:20px;
+  border-radius:15px;
+  margin-bottom:18px;
+  border:1px solid #34445f;
+}
+h2{color:#ffc64b;font-size:19px}
+.upload{
+  display:block;
+  padding:25px 12px;
+  border:2px dashed #e9ae35;
+  border-radius:12px;
+  text-align:center;
+  cursor:pointer;
+  color:#ffc64b;
+}
+input[type=file]{display:none}
+#preview{
+  display:none;
+  width:100%;
+  margin-top:15px;
+  border-radius:10px;
+}
+label{display:block;margin:15px 0 8px}
+input[type=number]{
+  width:100%;
+  padding:13px;
+  border-radius:8px;
+  border:1px solid #53627a;
+  background:#101522;
+  color:white;
+  font-size:16px;
+}
+button{
+  width:100%;
+  padding:15px;
+  margin-top:18px;
+  background:#f3b735;
+  color:#171717;
+  font-size:17px;
+  font-weight:bold;
+  border:0;
+  border-radius:10px;
+  cursor:pointer;
+}
+button:active{transform:scale(.98)}
+.result{
+  display:none;
+  background:#101d30;
+  padding:15px;
+  border-radius:10px;
+  margin-top:15px;
+  line-height:1.8;
+}
+footer{text-align:center;color:#8794a9;padding:20px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🎯 CARROM MASTER AI</h1>
+  <p>Smart Carrom Shot Assistant</p>
+</header>
+
+<div class="container">
+
+  <div class="card">
+    <h2>📷 Board Image</h2>
+    <p>Upload a clear picture of your Carrom board.</p>
+
+    <label class="upload" for="boardImage">
+      📸 SELECT BOARD IMAGE
+    </label>
+
+    <input type="file" id="boardImage" accept="image/*">
+
+    <img id="preview" alt="Carrom board preview">
+  </div>
+
+  <div class="card">
+    <h2>🎯 Shot Calculator</h2>
+    <p>Enter your estimated shot details.</p>
+
+    <label for="angle">Shot Angle (degrees)</label>
+    <input id="angle" type="number" min="0" max="360" value="45">
+
+    <label for="distance">Shot Distance (cm)</label>
+    <input id="distance" type="number" min="1" max="100" value="20">
+
+    <button onclick="calculateShot()">ANALYZE SHOT</button>
+
+    <div class="result" id="result"></div>
+  </div>
+
+  <div class="card">
+    <h2>🧠 AI Assistant</h2>
+    <p>
+      This is the first version of Carrom Master AI.
+      Board image preview and manual shot calculations
+      are available. Automatic coin detection and
+      computer vision will be developed in later versions.
+    </p>
+  </div>
+
+</div>
+
+<footer>
+  CARROM MASTER AI · Version 1.0
+</footer>
+
+<script>
+const imageInput = document.getElementById("boardImage");
+
+imageInput.addEventListener("change", function(){
+  const file = this.files[0];
+  if(!file) return;
+
+  const preview = document.getElementById("preview");
+  preview.src = URL.createObjectURL(file);
+  preview.style.display = "block";
+});
+
+function calculateShot(){
+  const angle = Number(document.getElementById("angle").value);
+  const distance = Number(document.getElementById("distance").value);
+  const result = document.getElementById("result");
+
+  if(!Number.isFinite(angle) || angle < 0 || angle > 360 ||
+     !Number.isFinite(distance) || distance <= 0 || distance > 100){
+    result.style.display = "block";
+    result.innerHTML = "⚠️ Please enter a valid angle (0–360) and distance (1–100 cm).";
+    return;
+  }
+
+  const power = Math.min(100, Math.round(distance * 1.5));
+
+  result.style.display = "block";
+  result.innerHTML =
+    "<b>🎯 Shot Details</b><br>" +
+    "Angle: " + angle + "°<br>" +
+    "Distance: " + distance + " cm<br>" +
+    "Suggested practice power: " + power + "%<br><br>" +
+    "ℹ️ This is a basic practice estimate, not an AI prediction from the uploaded image.";
+}
+</script>
+
+</body>
+</html>
