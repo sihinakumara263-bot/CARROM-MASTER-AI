@@ -1,0 +1,367 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Carrom Master AI - Practice</title>
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;padding:16px;background:#101522;color:white;
+ font-family:Arial,sans-serif;text-align:center
+}
+h1{color:#ffc64b;font-size:25px}
+p{color:#cbd5e1}
+.game{max-width:460px;margin:auto}
+canvas{
+ width:100%;height:auto;display:block;
+ background:#b77a3d;border:8px solid #e9ae35;
+ border-radius:15px;touch-action:manipulation
+}
+button{
+ width:100%;padding:15px;margin-top:12px;
+ border:0;border-radius:10px;background:#f3b735;
+ color:#171717;font-size:17px;font-weight:bold
+}
+.secondary{background:#34445f;color:white}
+#status{
+ margin-top:14px;padding:14px;background:#1b263b;
+ border-radius:10px;line-height:1.6
+}
+.small{font-size:13px;color:#9eabc0}
+</style>
+</head>
+<body>
+<div class="game">
+<h1>🎯 CARROM MASTER AI</h1>
+<p>AI Practice Board · Version 2.0</p>
+
+<canvas id="board" width="400" height="560"></canvas>
+
+<button id="auto">🤖 START AUTO PLAY</button>
+<button class="secondary" id="reset">↻ RESET BOARD</button>
+
+<div id="status">
+Waiting for AI...
+</div>
+<p class="small">
+This is a simulated practice game. AI shots are calculated
+inside this board, not in Carrom Pool.
+</p>
+</div>
+
+<script>
+const canvas=document.getElementById("board");
+const ctx=canvas.getContext("2d");
+const statusBox=document.getElementById("status");
+const autoBtn=document.getElementById("auto");
+
+const W=400,H=560;
+const R=12,POCKET=25;
+const left=35,right=365,top=35,bottom=525;
+const friction=0.985;
+
+let balls=[];
+let striker;
+let running=false;
+let autoPlay=false;
+let animation=null;
+let shotCount=0;
+let pocketCount=0;
+let lastAim=null;
+
+function makeBall(x,y,color,type="coin"){
+ return {x,y,vx:0,vy:0,color,type,r:R,active:true};
+}
+
+function resetBoard(){
+ autoPlay=false;
+ running=false;
+ cancelAnimationFrame(animation);
+ shotCount=0;
+ pocketCount=0;
+ lastAim=null;
+
+ balls=[];
+ const cx=200,cy=260;
+ const colors=["#171717","#f5f0df","#171717",
+ "#f5f0df","#d83b35","#f5f0df",
+ "#171717","#f5f0df","#171717"];
+
+ for(let i=0;i<9;i++){
+   const a=i*Math.PI*2/9;
+   balls.push(makeBall(
+     cx+Math.cos(a)*27,
+     cy+Math.sin(a)*27,
+     colors[i]
+   ));
+ }
+ striker=makeBall(200,475,"#287de0","striker");
+ statusBox.innerHTML="Board ready. Press START AUTO PLAY.";
+ autoBtn.textContent="🤖 START AUTO PLAY";
+ draw();
+}
+
+function pocketAt(x,y){
+ const spots=[[35,35],[365,35],[35,525],[365,525]];
+ return spots.some(p=>Math.hypot(x-p[0],y-p[1])<POCKET);
+}
+
+function draw(){
+ ctx.clearRect(0,0,W,H);
+
+ ctx.fillStyle="#c58b4e";
+ ctx.fillRect(0,0,W,H);
+
+ ctx.strokeStyle="#613719";
+ ctx.lineWidth=5;
+ ctx.strokeRect(left,top,right-left,bottom-top);
+
+ // pockets
+ [[35,35],[365,35],[35,525],[365,525]].forEach(p=>{
+  ctx.beginPath();
+  ctx.arc(p[0],p[1],POCKET,0,Math.PI*2);
+  ctx.fillStyle="#161616";
+  ctx.fill();
+ });
+
+ // center markings
+ ctx.strokeStyle="#8b542c";
+ ctx.lineWidth=2;
+ ctx.beginPath();
+ ctx.arc(200,260,52,0,Math.PI*2);
+ ctx.stroke();
+ ctx.beginPath();
+ ctx.arc(200,260,8,0,Math.PI*2);
+ ctx.stroke();
+
+ // striker baseline
+ ctx.strokeStyle="#fff0d1";
+ ctx.lineWidth=3;
+ ctx.beginPath();
+ ctx.moveTo(90,475);
+ ctx.lineTo(310,475);
+ ctx.stroke();
+
+ // AI aim line
+ if(lastAim){
+  ctx.save();
+  ctx.setLineDash([8,6]);
+  ctx.strokeStyle="#00f0a0";
+  ctx.lineWidth=3;
+  ctx.beginPath();
+  ctx.moveTo(striker.x,striker.y);
+  ctx.lineTo(lastAim.x,lastAim.y);
+  ctx.stroke();
+  ctx.restore();
+ }
+
+ [...balls,striker].forEach(b=>{
+  if(!b.active)return;
+  ctx.beginPath();
+  ctx.arc(b.x,b.y,b.r,0,Math.PI*2);
+  ctx.fillStyle=b.color;
+  ctx.fill();
+  ctx.lineWidth=2;
+  ctx.strokeStyle="#fff0d0";
+  ctx.stroke();
+  if(b.type==="striker"){
+   ctx.fillStyle="white";
+   ctx.font="bold 9px Arial";
+   ctx.textAlign="center";
+   ctx.fillText("S",b.x,b.y+3);
+  }
+ });
+}
+
+function chooseShot(){
+ const targets=balls.filter(b=>b.active);
+ if(!targets.length)return null;
+
+ const pockets=[[35,35],[365,35],[35,525],[365,525]];
+ let best=null;
+ let bestScore=Infinity;
+
+ for(const coin of targets){
+  for(const pocket of pockets){
+   const dx=pocket[0]-coin.x;
+   const dy=pocket[1]-coin.y;
+   const len=Math.hypot(dx,dy);
+   if(len<1)continue;
+
+   const ux=dx/len,uy=dy/len;
+   const tx=coin.x-ux*(R*2+2);
+   const ty=coin.y-uy*(R*2+2);
+
+   if(tx<left+R||tx>right-R||
+      ty<top+R||ty>bottom-R)continue;
+
+   const shotDistance=Math.hypot(tx-striker.x,ty-striker.y);
+   const score=shotDistance+len*0.65;
+
+   if(score<bestScore){
+    bestScore=score;
+    best={coin,pocket,tx,ty,score,shotDistance};
+   }
+  }
+ }
+ return best;
+}
+
+function takeShot(){
+ if(running)return;
+
+ const plan=chooseShot();
+ if(!plan){
+  autoPlay=false;
+  autoBtn.textContent="🤖 START AUTO PLAY";
+  statusBox.innerHTML="🏆 No coins remaining! Reset to play again.";
+  return;
+ }
+
+ const dx=plan.tx-striker.x;
+ const dy=plan.ty-striker.y;
+ const len=Math.hypot(dx,dy);
+ if(len<1)return;
+
+ const power=Math.min(13,Math.max(5,plan.shotDistance*0.045+5));
+ striker.vx=dx/len*power;
+ striker.vy=dy/len*power;
+
+ lastAim={x:plan.tx,y:plan.ty};
+ shotCount++;
+ running=true;
+
+ const angle=(Math.atan2(-dy,dx)*180/Math.PI+360)%360;
+
+ statusBox.innerHTML=
+ "🤖 AI SHOT #"+shotCount+
+ "<br>🎯 Target: coin near pocket"+
+ "<br>📐 Aim angle: "+angle.toFixed(1)+"°"+
+ "<br>💪 Power: "+Math.round(power/13*100)+"%"+
+ "<br>🕳️ Pocketing coins: "+pocketCount;
+
+ animate();
+}
+
+function collide(a,b){
+ const dx=b.x-a.x,dy=b.y-a.y;
+ const dist=Math.hypot(dx,dy);
+ const min=a.r+b.r;
+
+ if(dist===0||dist>=min)return;
+
+ const nx=dx/dist,ny=dy/dist;
+ const overlap=min-dist;
+
+ a.x-=nx*overlap/2;
+ a.y-=ny*overlap/2;
+ b.x+=nx*overlap/2;
+ b.y+=ny*overlap/2;
+
+ const relative=(a.vx-b.vx)*nx+(a.vy-b.vy)*ny;
+ if(relative>0)return;
+
+ const impulse=relative;
+ a.vx-=impulse*nx;
+ a.vy-=impulse*ny;
+ b.vx+=impulse*nx;
+ b.vy+=impulse*ny;
+}
+
+function moveBall(b){
+ if(!b.active)return;
+
+ b.x+=b.vx;
+ b.y+=b.vy;
+ b.vx*=friction;
+ b.vy*=friction;
+
+ if(Math.abs(b.vx)<0.045)b.vx=0;
+ if(Math.abs(b.vy)<0.045)b.vy=0;
+
+ if(pocketAt(b.x,b.y)){
+  b.active=false;
+  b.vx=b.vy=0;
+  if(b.type==="coin")pocketCount++;
+  if(b.type==="striker"){
+   b.active=true;
+   b.x=200;b.y=475;
+   b.vx=b.vy=0;
+  }
+  return;
+ }
+
+ if(b.x<left+b.r||b.x>right-b.r){
+  b.vx*=-0.82;
+  b.x=Math.max(left+b.r,Math.min(right-b.r,b.x));
+ }
+ if(b.y<top+b.r||b.y>bottom-b.r){
+  b.vy*=-0.82;
+  b.y=Math.max(top+b.r,Math.min(bottom-b.r,b.y));
+ }
+}
+
+function animate(){
+ for(let step=0;step<2;step++){
+  [...balls,striker].forEach(moveBall);
+
+  for(let i=0;i<balls.length;i++){
+   if(!balls[i].active)continue;
+   for(let j=i+1;j<balls.length;j++){
+    if(balls[j].active)collide(balls[i],balls[j]);
+   }
+   if(striker.active)collide(balls[i],striker);
+  }
+ }
+
+ draw();
+
+ const moving=[...balls,striker].some(
+  b=>b.active&&(Math.abs(b.vx)>0.05||Math.abs(b.vy)>0.05)
+ );
+
+ if(moving){
+  animation=requestAnimationFrame(animate);
+ }else{
+  running=false;
+  striker.x=200;striker.y=475;
+  striker.vx=striker.vy=0;
+  draw();
+
+  if(autoPlay){
+   if(balls.some(b=>b.active)){
+    statusBox.innerHTML+="<br>🤖 Choosing next shot...";
+    setTimeout(()=>{
+     if(autoPlay)takeShot();
+    },700);
+   }else{
+    autoPlay=false;
+    autoBtn.textContent="🤖 START AUTO PLAY";
+    statusBox.innerHTML+="<br>🏆 Practice completed!";
+   }
+  }else{
+   statusBox.innerHTML+="<br>✅ Shot completed.";
+  }
+ }
+}
+
+autoBtn.addEventListener("click",()=>{
+ if(running)return;
+ autoPlay=!autoPlay;
+ if(autoPlay){
+  autoBtn.textContent="⏸ STOP AUTO PLAY";
+  takeShot();
+ }else{
+  autoBtn.textContent="🤖 START AUTO PLAY";
+  statusBox.innerHTML="Auto Play stopped.";
+ }
+});
+
+document.getElementById("reset").addEventListener("click",resetBoard);
+
+resetBoard();
+</script>
+</body>
+</html>
